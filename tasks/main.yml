@@ -1,0 +1,58 @@
+- name: Add a docker group for granting daemon access
+  group:
+    name: docker
+    state: present
+
+- name: Add managers and members group
+  group:
+    name: '{{item}}'
+    state: present
+  loop:
+    - org-manage
+    - org-member
+
+- name: Allow org-manage group to sudo
+  lineinfile:
+    dest: /etc/sudoers
+    state: present
+    regexp: '^%org-manage'
+    line: '%org-manage ALL=(ALL) ALL'
+    validate: 'visudo -cf %s'
+
+- name: Add user accounts for org-manage
+  user:
+    name: '{{item | basename}}'
+    state: present
+    groups: org-manage, org-member, docker
+    append: yes
+    password: "{{ lookup('password', 'credentials/{{item | basename}}.txt encrypt=sha512_crypt') }}"
+    update_password: on_create
+    shell: /bin/bash
+    skeleton: /etc/skel
+  loop: '{{ manage_pubkeys }}'
+
+- name: Add user accounts for org-member
+  user:
+    name: '{{item | basename}}'
+    state: present
+    groups: org-member
+    append: yes
+    password: "{{ lookup('password', 'credentials/{{item | basename}}.txt encrypt=sha512_crypt') }}"
+    update_password: on_create
+    shell: /bin/bash
+    skeleton: /etc/skel
+  loop: '{{ member_pubkeys }}'
+
+- name: Add public keys for org-manage
+  authorized_key:
+    user: '{{item | basename}}'
+    state: present
+    key: "{{ lookup('file', '{{item}}') }}"
+  loop: '{{ manage_pubkeys }}'
+
+- name: Add public keys for org-member
+  authorized_key:
+    user: '{{item | basename}}'
+    state: present
+    key: "{{ lookup('file', '{{item}}') }}"
+  loop: '{{ member_pubkeys }}'
